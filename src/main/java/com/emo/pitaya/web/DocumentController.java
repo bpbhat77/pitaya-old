@@ -11,7 +11,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
-import java.util.UUID;
 
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -27,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import com.emo.mango.config.MangoConfig;
+import com.emo.pitaya.pdf.PdfConfig;
+import com.emo.pitaya.pdf.PdfGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.ByteStreams;
 
@@ -34,14 +35,14 @@ import com.google.common.io.ByteStreams;
 @RequestMapping("/document")
 public class DocumentController {
 
-	private final MangoConfig config;
+	private final PdfConfig config;
 
 	private final VelocityEngine ve;
 
 	@Inject
 	public DocumentController(final MangoConfig config) {
 		this.ve = new VelocityEngine();
-		this.config = config;
+		this.config = new PdfConfig(config.config());
 
 		final Properties props = new Properties();
 
@@ -50,28 +51,13 @@ public class DocumentController {
 				"Velocity File Resource Loader");
 		props.setProperty("file.resource.loader.class",
 				"org.apache.velocity.runtime.resource.loader.FileResourceLoader");
-		props.setProperty("file.resource.loader.path", config.config()
-				.getString("webrepo"));
+		props.setProperty("file.resource.loader.path", this.config.sandbox.base.getPath());
 		props.setProperty("file.resource.loader.cache", "false");
 		props.setProperty("file.resource.loader.modificationCheckInterval", "0");
 
 		ve.init(props);
 	}
 
-	private boolean fileBelongToDirectory(File file, File directory)
-			throws IOException {
-		final File parent = file.getParentFile();
-
-		if (null == parent) {
-			return false;
-		}
-
-		if (Files.isSameFile(parent.toPath(), directory.toPath())) {
-			return true;
-		} else {
-			return fileBelongToDirectory(parent, directory);
-		}
-	}
 
 	private void uncheckedServe(final File file,
 			final HttpServletResponse response) throws IllegalAccessException,
@@ -101,17 +87,8 @@ public class DocumentController {
 	private void serve(final String docId, final String elementRelativePath,
 			final VelocityContext vctx, final HttpServletResponse response)
 			throws IllegalAccessException, IOException {
-		final String webrepo = config.config().getString("webrepo");
 
-		final File webrepoPath = new File(webrepo).getCanonicalFile();
-		final File docPath = new File(webrepoPath, docId);
-		final File elementPath = new File(docPath, elementRelativePath);
-
-		if (!fileBelongToDirectory(elementPath, webrepoPath)) {
-			throw new SecurityException(
-					"security error : computing server path from URL : "
-							+ elementPath.getPath());
-		}
+		final File elementPath = config.sandbox.relativeToDoc(docId, elementRelativePath);
 
 		final String contentType = Files.probeContentType(elementPath.toPath());
 
@@ -208,15 +185,11 @@ public class DocumentController {
 			final HttpServletRequest request, final HttpServletResponse response)
 			throws IOException, IllegalAccessException {
 
-		final String defaultOptions = "--zoom 1.0 -B 0 -L 0 -R 0 -T 0 -s A4 --no-pdf-compression --disable-smart-shrinking";
-		final String source = "http://localhost:8080/app/document/" + docId
-				+ "/content";
-		final File dest = new File("c:\\Users\\Cedric\\"
-				+ UUID.randomUUID().toString() + ".pdf");
-
-		final PdfGenerator pdf = new PdfGenerator(config.config().getString(
-				"wkhtmltopdf"), source, dest, defaultOptions,
+		final File dest = config.temporary.newPdfFile();
+		
+		final PdfGenerator pdf = new PdfGenerator(config.binary, config.webSourceFor(docId), dest, config.options,
 				entriesFromRequest(request));
+
 		pdf.run();
 	}
 
@@ -226,15 +199,11 @@ public class DocumentController {
 			final HttpServletRequest request, final HttpServletResponse response)
 			throws IOException, IllegalAccessException {
 
-		final String defaultOptions = "--zoom 1.0 -B 0 -L 0 -R 0 -T 0 -s A4 --no-pdf-compression --disable-smart-shrinking";
-		final String source = "http://localhost:8080/app/document/" + docId
-				+ "/content";
-		final File dest = new File("c:\\Users\\Cedric\\"
-				+ UUID.randomUUID().toString() + ".pdf");
-
-		final PdfGenerator pdf = new PdfGenerator(config.config().getString(
-				"wkhtmltopdf"), source, dest, defaultOptions,
+		final File dest = config.temporary.newPdfFile();
+		
+		final PdfGenerator pdf = new PdfGenerator(config.binary, config.webSourceFor(docId), dest, config.options,
 				entriesFromRequest(request));
+
 		pdf.run();
 
 		uncheckedServe(dest, response);
