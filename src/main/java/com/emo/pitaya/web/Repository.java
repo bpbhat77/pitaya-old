@@ -1,14 +1,14 @@
-package com.emo.pitaya.pdf;
+package com.emo.pitaya.web;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 
-public class Sandbox {
+public class Repository {
 
 	public final File base;
 	
-	public Sandbox(final String base) {
+	public Repository(final String base) {
 		this.base = new File(base);
 	}
 	
